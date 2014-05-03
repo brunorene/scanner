@@ -16,12 +16,11 @@ import static com.googlecode.javacv.cpp.opencv_highgui.*;
 import static com.googlecode.javacv.cpp.opencv_imgproc.*;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pt.scanner.server.data.Contour;
 import static pt.scanner.server.data.Contour.STORAGE;
+import pt.scanner.server.data.Position;
 import pt.scanner.server.data.Utils;
 
 /**
@@ -51,7 +50,6 @@ public class Scanner implements Runnable
 	{
 		try
 		{
-			ExecutorService service = Executors.newFixedThreadPool(4);
 			IplImage initImg = cvLoadImage(String.format("%s/calibration/background.jpg", root), CV_LOAD_IMAGE_COLOR);
 			IplImage grayImg = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1);
 			cvCvtColor(initImg, grayImg, CV_BGR2GRAY);
@@ -72,7 +70,19 @@ public class Scanner implements Runnable
 			// remove biggest contour
 			squares.sort(null);
 			squares.remove(squares.size() - 1);
-			squares.forEach(s -> service.submit(new LineFinder(s)));
+			squares.forEach(s -> s.calculateMainLines(initImg));
+			Position.quadrants().stream().forEach(pos
+					-> squares.stream().forEach(sq1
+							-> squares.stream().forEach(sq2 ->
+									{
+										if (!sq1.equals(sq2) && sq1.mainLine(pos) != null
+										&& sq2.mainLine(pos) != null
+										&& sq1.mainLine(pos).intersection(sq2.mainLine(pos)) != null)
+										{
+											sq1.mainLine(pos).addRelated(sq2);
+											sq2.mainLine(pos).addRelated(sq1);
+										}
+					})));
 			Utils.showImage(initImg, 640, 480);
 			squares.forEach(Contour::release);
 			cvReleaseImage(initImg);

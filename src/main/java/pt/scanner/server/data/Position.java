@@ -5,8 +5,11 @@
  */
 package pt.scanner.server.data;
 
+import com.googlecode.javacv.cpp.opencv_core.CvScalar;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  *
@@ -38,5 +41,15 @@ public enum Position
 	public static List<Position> quadrants()
 	{
 		return Arrays.asList(RIGHT, BOTTOM, LEFT, TOP);
+	}
+
+	public static Map<Position, CvScalar> colorQuadrants()
+	{
+		Map<Position, CvScalar> map = new HashMap<>();
+		map.put(TOP, CvScalar.BLUE);
+		map.put(BOTTOM, CvScalar.RED);
+		map.put(LEFT, CvScalar.GREEN);
+		map.put(RIGHT, CvScalar.MAGENTA);
+		return map;
 	}
 }

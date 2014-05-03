@@ -53,7 +53,7 @@ public class Contour implements Comparable<Contour>
 		cvBoxPoints(minRect, c);
 		IntStream.range(0, c.length / 2).forEach(i -> corners.add(new Point(c[i * 2], c[i * 2 + 1])));
 		float quadrantLength = Math.max(minRect.size().height() / 2f, minRect.size().width() / 2f) * 1.05f;
-		Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(getCentroid().x(), getCentroid().y(), angle() + (float) p.getPosition(), quadrantLength)));
+		Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(new Coordinate(getCentroid().x(), getCentroid().y()), angle() + (float) p.getPosition(), quadrantLength)));
 	}
 
 	public void addLine(Line l)
@@ -64,7 +64,9 @@ public class Contour implements Comparable<Contour>
 			if (e.getValue().intersection(l) != null)
 			{
 				lines.get(e.getKey()).add(l);
-				mainLines.put(e.getKey(), Line.meanLine(image, lines.get(e.getKey())));
+				Line mean = Line.meanLine(image, lines.get(e.getKey()));
+				mean.addRelated(this);
+				mainLines.put(e.getKey(), mean);
 				break;
 			}
 		}
@@ -83,10 +85,34 @@ public class Contour implements Comparable<Contour>
 		return minRect.angle();
 	}
 
+	public void calculateMainLines(IplImage image)
+	{
+		CvSeq found = cvHoughLines2(getImage(), STORAGE, CV_HOUGH_PROBABILISTIC, 1, Math.PI / 180, 50, 50, 10);
+		IntStream.range(0, found.total()).forEach(i -> addLine(new Line(
+				new CvPoint(cvGetSeqElem(found, i)).position(0),
+				new CvPoint(cvGetSeqElem(found, i)).position(1))));
+		Position.quadrants().stream().filter(p -> mainLine(p) != null).forEach(p -> cvLine(image, mainLine(p).start(), mainLine(p).end(),
+				Position.colorQuadrants().get(p), 3, CV_AA, 0));
+	}
+
 	@Override
 	public int compareTo(Contour o)
 	{
 		return Double.compare(cvContourArea(contour, CV_WHOLE_SEQ, 1), cvContourArea(o.getContour(), CV_WHOLE_SEQ, 1));
+	}
+
+	@Override
+	public boolean equals(Object obj)
+	{
+		if (obj == null)
+		{
+			return false;
+		}
+		if (getClass() != obj.getClass())
+		{
+			return false;
+		}
+		return hashCode() == obj.hashCode();
 	}
 
 	public final CvPoint getCentroid()
@@ -125,6 +151,26 @@ public class Contour implements Comparable<Contour>
 	public List<Line> getLines(Position pos)
 	{
 		return lines.get(pos);
+	}
+
+	@Override
+	public int hashCode()
+	{
+		int hash = 7;
+		hash = 71 * hash + Objects.hashCode(contour);
+		hash = 71 * hash + Objects.hashCode(corners);
+		hash = 71 * hash + Objects.hashCode(guidelines);
+		hash = 71 * hash + Objects.hashCode(image);
+		hash = 71 * hash + Objects.hashCode(lines);
+		hash = 71 * hash + Objects.hashCode(mainLines);
+		hash = 71 * hash + Objects.hashCode(minRect);
+		hash = 71 * hash + Objects.hashCode(moments);
+		return hash;
+	}
+
+	public Line mainLine(Position p)
+	{
+		return mainLines.get(p);
 	}
 
 	public Point nextCorner(Point curr)

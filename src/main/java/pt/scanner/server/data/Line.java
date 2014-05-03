@@ -11,7 +11,6 @@ import com.vividsolutions.jts.algorithm.Angle;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.LineSegment;
 import java.util.*;
-import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,43 +25,42 @@ public class Line extends LineSegment
 		{
 			return lines.get(0);
 		}
-		List<Coordinate> coords = new ArrayList<>();
-		IntStream.range(0, lines.size() - 1).forEach(i -> coords.add(lines.get(i).lineIntersection(lines.get(i + 1))));
-		Coordinate coord = new Coordinate(coords.stream().map(c -> c.x).reduce((a, b) -> a + b).get() / coords.size(),
-				coords.stream().map(c -> c.y).reduce((a, b) -> a + b).get() / coords.size());
-		float angle = lines.stream().map(l -> (float) l.angle()).reduce((a1, a2) -> a1 + a2).get() / lines.size();
-		Line mean = new Line(coord, angle, 1000);
-		mean.expand(img.width(), img.height());
+		Double startX = lines.stream().map(l -> l.p0.x).reduce(Double::sum).get();
+		Double startY = lines.stream().map(l -> l.p0.y).reduce(Double::sum).get();
+		Double endX = lines.stream().map(l -> l.p1.x).reduce(Double::sum).get();
+		Double endY = lines.stream().map(l -> l.p1.y).reduce(Double::sum).get();
+		Line mean = new Line(new Coordinate(startX / lines.size(), startY / lines.size()), new Coordinate(endX / lines.size(), endY / lines.size()));
 		return mean;
 	}
-
-	public Line(Coordinate start, float angle, float length)
-	{
-		this(Math.round((float) start.x), Math.round((float) start.y), angle, length);
-	}
+	private final Set<Contour> related = new HashSet<>();
 
 	public Line(CvPoint start, float angle, float length)
 	{
-		this(start.x(), start.y(), angle, length);
+		this(new Coordinate(start.x(), start.y()), angle, length);
 	}
 
-	public Line(int x1, int y1, float angle, float length)
+	public Line(Coordinate coord, float angle, float length)
 	{
-		this(x1, y1,
-				Math.round(x1 + (float) Math.cos(Angle.toRadians(angle)) * length),
-				Math.round(y1 + (float) Math.sin(Angle.toRadians(angle)) * length));
+		this(new Coordinate((float) coord.x, (float) coord.y),
+				new Coordinate(Math.round(coord.x + (float) Math.cos(Angle.toRadians(angle)) * length),
+						Math.round(coord.y + (float) Math.sin(Angle.toRadians(angle)) * length)));
 	}
 
 	public Line(CvPoint pt1, CvPoint pt2)
 	{
-		this(pt1.x(), pt1.y(), pt2.x(), pt2.y());
+		this(new Coordinate(pt1.x(), pt1.y()), new Coordinate(pt2.x(), pt2.y()));
 	}
 
-	public Line(int x1, int y1, int x2, int y2)
+	public Line(Coordinate coord1, Coordinate coord2)
 	{
 		super();
-		setCoordinates(new Coordinate(x1, y1), new Coordinate(x2, y2));
+		setCoordinates(coord1, coord2);
 		normalize();
+	}
+
+	public void addRelated(Contour c)
+	{
+		related.add(c);
 	}
 
 	public CvPoint end()
@@ -97,6 +95,11 @@ public class Line extends LineSegment
 		normalize();
 	}
 
+	public Set<Contour> getRelated()
+	{
+		return related;
+	}
+
 	@Override
 	public Coordinate lineIntersection(LineSegment line)
 	{
@@ -113,5 +116,11 @@ public class Line extends LineSegment
 	public CvPoint start()
 	{
 		return new CvPoint((int) Math.round(p0.x), (int) Math.round(p0.y));
+	}
+
+	@Override
+	public String toString()
+	{
+		return String.format("Line(%s,%s - %s related)", getCoordinate(0), getCoordinate(1), getRelated().size());
 	}
 }
