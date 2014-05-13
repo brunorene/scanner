@@ -16,170 +16,119 @@ import static com.googlecode.javacv.cpp.opencv_imgproc.*;
 import com.googlecode.javacv.cpp.opencv_imgproc.CvMoments;
 import com.vividsolutions.jts.geom.Coordinate;
 import java.util.*;
-import java.util.Map.Entry;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class Contour implements Comparable<Contour>
+public class Contour
 {
 
-	private static final Logger log = LoggerFactory.getLogger(Contour.class);
-	public static CvMemStorage STORAGE = CvMemStorage.create();
+    private static final Logger log = LoggerFactory.getLogger(Contour.class);
+    public static CvMemStorage STORAGE = CvMemStorage.create();
 
-	public static void resetStorage()
-	{
-		STORAGE = CvMemStorage.create();
-	}
-	private final CvSeq contour;
-	private final List<Point> corners = new ArrayList<>();
-	private final Map<Position, Line> guidelines = new HashMap<>();
-	private final IplImage image;
-	private final Map<Position, List<Line>> lines = new HashMap<>();
-	private final Map<Position, Line> mainLines = new HashMap<>();
-	private final CvBox2D minRect;
-	private final CvMoments moments = new CvMoments();
+    public static void resetStorage()
+    {
+        STORAGE = CvMemStorage.create();
+    }
+    private final CvSeq contour;
+    private final List<Point> corners = new ArrayList<>();
+    private final IplImage image;
+    private final Map<Position, Line> mainLines = new HashMap<>();
+    private final CvBox2D minRect;
+    private final CvMoments moments = new CvMoments();
+    private final Integer lineCount;
+    private final Map<Position, Set<Line>> lines = new HashMap<>();
 
-	public Contour(CvSeq cont, IplImage img)
-	{
-		contour = cont;
-		image = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1);
-		cvSet(this.image, CvScalar.BLACK);
-		cvDrawContours(this.image, contour, CvScalar.WHITE, CvScalar.WHITE, 0, 2, 8);
-		cvMoments(image, moments, 1);
-		Position.quadrants().stream().forEach(p -> lines.put(p, new ArrayList<>()));
-		minRect = cvMinAreaRect2(contour, STORAGE);
-		float[] c = new float[8];
-		cvBoxPoints(minRect, c);
-		IntStream.range(0, c.length / 2).forEach(i -> corners.add(new Point(c[i * 2], c[i * 2 + 1])));
-		float quadrantLength = Math.max(minRect.size().height() / 2f, minRect.size().width() / 2f) * 1.05f;
-		Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(new Coordinate(getCentroid().x(), getCentroid().y()), angle() + (float) p.getPosition(), quadrantLength)));
-	}
+    public Contour(CvSeq cont, IplImage img)
+    {
+        contour = cont;
+        image = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1);
+        cvSet(this.image, CvScalar.BLACK);
+        cvDrawContours(this.image, contour, CvScalar.WHITE, CvScalar.WHITE, 0, 2, 8);
+        cvMoments(image, moments, 1);
+        minRect = cvMinAreaRect2(contour, STORAGE);
+        float[] c = new float[8];
+        cvBoxPoints(minRect, c);
+        IntStream.range(0, c.length / 2).forEach(i -> corners.add(new Point(c[i * 2], c[i * 2 + 1])));
+        float quadrantLength = Math.max(minRect.size().height() / 2f, minRect.size().width() / 2f) * 1.05f;
+        Map<Position, Line> guidelines = new HashMap<>();
+        Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(new Coordinate(getCentroid().x(), getCentroid().y()), angle() + (float) p.getPosition(), quadrantLength)));
+        CvSeq found = cvHoughLines2(image, STORAGE, CV_HOUGH_PROBABILISTIC, 1, Math.PI / 180, 50, 50, 10);
+        lineCount = found.total();
+        Position.quadrants().stream().forEach(p -> lines.put(p, new HashSet<>()));
+        IntStream.range(0, found.total())
+                .mapToObj(i -> new Line(
+                                new CvPoint(cvGetSeqElem(found, i)).position(0),
+                                new CvPoint(cvGetSeqElem(found, i)).position(1)))
+                .filter(l -> Double.compare(l.angle(), 0.0) != 0)
+                .map(l -> l.expandedLine(img.width(), img.height()))
+                .forEach(l -> Position.quadrants()
+                        .stream()
+                        .filter(q -> guidelines.get(q).intersection(l) != null).forEach(q -> lines.get(q).add(l)));
+    }
 
-	public void addLine(Line l)
-	{
-		l.expand(getImage().width(), getImage().height());
-		for (Entry<Position, Line> e : guidelines.entrySet())
-		{
-			if (e.getValue().intersection(l) != null)
-			{
-				lines.get(e.getKey()).add(l);
-				Line mean = Line.meanLine(image, lines.get(e.getKey()));
-				mean.addRelated(this);
-				mainLines.put(e.getKey(), mean);
-				break;
-			}
-		}
-	}
+    public Integer getLineCount()
+    {
+        return lineCount;
+    }
 
-	public final float angle()
-	{
-		if (minRect.angle() > 45f)
-		{
-			return minRect.angle() - 90f;
-		}
-		if (minRect.angle() < -45f)
-		{
-			return minRect.angle() + 90f;
-		}
-		return minRect.angle();
-	}
+    public void joinLines()
+    {
+        Position.quadrants().forEach(p -> mainLines.put(p, Line.meanLine(lines.get(p))));
+    }
 
-	public void calculateMainLines(IplImage image)
-	{
-		CvSeq found = cvHoughLines2(getImage(), STORAGE, CV_HOUGH_PROBABILISTIC, 1, Math.PI / 180, 50, 50, 10);
-		IntStream.range(0, found.total()).forEach(i -> addLine(new Line(
-				new CvPoint(cvGetSeqElem(found, i)).position(0),
-				new CvPoint(cvGetSeqElem(found, i)).position(1))));
-		Position.quadrants().stream().filter(p -> mainLine(p) != null).forEach(p -> cvLine(image, mainLine(p).start(), mainLine(p).end(),
-				Position.colorQuadrants().get(p), 3, CV_AA, 0));
-	}
+    public final float angle()
+    {
+        return minRect.angle() + (minRect.angle() > 45f ? -90f : (minRect.angle() < -45f ? 90f : 0));
+    }
 
-	@Override
-	public int compareTo(Contour o)
-	{
-		return Double.compare(cvContourArea(contour, CV_WHOLE_SEQ, 1), cvContourArea(o.getContour(), CV_WHOLE_SEQ, 1));
-	}
+    public final CvPoint getCentroid()
+    {
+        CvPoint p = new CvPoint();
+        p.x((int) Math.round(moments.m10() / moments.m00()));
+        p.y((int) Math.round(moments.m01() / moments.m00()));
+        return p;
+    }
 
-	@Override
-	public boolean equals(Object obj)
-	{
-		if (obj == null)
-		{
-			return false;
-		}
-		if (getClass() != obj.getClass())
-		{
-			return false;
-		}
-		return hashCode() == obj.hashCode();
-	}
+    public final Coordinate getCentroidCoordinate()
+    {
+        return new Coordinate(moments.m10() / moments.m00(), moments.m01() / moments.m00());
+    }
 
-	public final CvPoint getCentroid()
-	{
-		CvPoint p = new CvPoint();
-		p.x((int) Math.round(moments.m10() / moments.m00()));
-		p.y((int) Math.round(moments.m01() / moments.m00()));
-		return p;
-	}
+    public CvSeq getContour()
+    {
+        return contour;
+    }
 
-	public final Coordinate getCentroidCoordinate()
-	{
-		return new Coordinate(moments.m10() / moments.m00(), moments.m01() / moments.m00());
-	}
+    public List<Point> getCorners()
+    {
+        return corners;
+    }
 
-	public CvSeq getContour()
-	{
-		return contour;
-	}
+    public IplImage getImage()
+    {
+        return image;
+    }
 
-	public List<Point> getCorners()
-	{
-		return corners;
-	}
+    public Line mainLine(Position p)
+    {
+        return mainLines.get(p);
+    }
 
-	public Line getGuideline(Position pos)
-	{
-		return guidelines.get(pos);
-	}
+    public Point nextCorner(Point curr)
+    {
+        return corners.get((corners.indexOf(curr) + 1) % corners.size());
+    }
 
-	public IplImage getImage()
-	{
-		return image;
-	}
+    public void release()
+    {
+        cvReleaseImage(image);
+    }
 
-	public List<Line> getLines(Position pos)
-	{
-		return lines.get(pos);
-	}
-
-	@Override
-	public int hashCode()
-	{
-		int hash = 7;
-		hash = 71 * hash + Objects.hashCode(contour);
-		hash = 71 * hash + Objects.hashCode(corners);
-		hash = 71 * hash + Objects.hashCode(guidelines);
-		hash = 71 * hash + Objects.hashCode(image);
-		hash = 71 * hash + Objects.hashCode(lines);
-		hash = 71 * hash + Objects.hashCode(mainLines);
-		hash = 71 * hash + Objects.hashCode(minRect);
-		hash = 71 * hash + Objects.hashCode(moments);
-		return hash;
-	}
-
-	public Line mainLine(Position p)
-	{
-		return mainLines.get(p);
-	}
-
-	public Point nextCorner(Point curr)
-	{
-		return corners.get((corners.indexOf(curr) + 1) % corners.size());
-	}
-
-	public void release()
-	{
-		cvReleaseImage(image);
-	}
+    @Override
+    public String toString()
+    {
+        return String.format("Contour %s", getCentroidCoordinate());
+    }
 }

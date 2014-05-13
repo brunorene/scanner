@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="10 seconds">
+    <appender class="ch.qos.logback.core.ConsoleAppender" name="ConsoleAppender">
+        <encoder>
+            <pattern>%5p [%t,%C{0},%F,%L] - %m%n</pattern>
+        </encoder>
+    </appender>
+    <root level="debug">
+        <appender-ref ref="ConsoleAppender" />
+    </root>
+</configuration>

@@ -45,7 +45,7 @@ public class Utils
 		opencv_core.IplImage showImg = cvCreateImage(new CvSize(width, height), IPL_DEPTH_8U, img.nChannels());
 		cvResize(img, showImg);
 		cvShowImage("Image", showImg);
-		cvWaitKey(60000);
+		cvWaitKey(20000);
 		cvReleaseImage(showImg);
 	}
 
