@@ -5,6 +5,7 @@
  */
 package pt.scanner.server;
 
+import com.google.common.base.Joiner;
 import com.googlecode.javacpp.Loader;
 import static com.googlecode.javacv.cpp.opencv_core.*;
 import com.googlecode.javacv.cpp.opencv_core.CvContour;
@@ -14,14 +15,16 @@ import com.googlecode.javacv.cpp.opencv_core.CvSeq;
 import com.googlecode.javacv.cpp.opencv_core.IplImage;
 import static com.googlecode.javacv.cpp.opencv_highgui.*;
 import static com.googlecode.javacv.cpp.opencv_imgproc.*;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pt.scanner.server.data.Contour;
 import static pt.scanner.server.data.Contour.STORAGE;
+import pt.scanner.server.data.Line;
 import pt.scanner.server.data.Position;
 import pt.scanner.server.data.Utils;
 
@@ -72,37 +75,56 @@ public class Scanner implements Runnable
             // remove biggest contour
             squares.sort((s1, s2) -> s1.getLineCount() - s2.getLineCount());
             squares.remove(squares.size() - 1);
+            squares.sort((s1, s2) -> s1.getIndex().intValue() - s2.getIndex().intValue());
             // relating mainLines
-            Contour first = squares.get(0);
             squares.forEach(s -> s.joinLines());
-            for (Position pos : Position.quadrants())
+            Position.quadrants().forEach(pos ->
             {
-                for (Contour c1 : squares)
+                squares.forEach(c1 ->
                 {
-                    for (Contour c2 : squares)
+                    Set<Line> l1 = c1.mainLines(pos);
+                    if (!l1.isEmpty())
                     {
-                        if (!c1.equals(c2)
-                                && c1.mainLine(pos) != null
-                                && c2.mainLine(pos) != null
-                                && c1.mainLine(pos).intersection(c2.mainLine(pos)) != null
-                                && !c1.mainLine(pos).getRelated().contains(c2)
-                                && !c2.mainLine(pos).getRelated().contains(c1)
-                                && Math.abs(c1.mainLine(pos).angle() - c2.mainLine(pos).angle()) < 15)
+                        Line f1 = l1.iterator().next();
+                        squares.forEach(c2 ->
                         {
-                            cvLine(initImg, c1.mainLine(pos).start(), c1.mainLine(pos).end(), Position.colorQuadrants().get(pos), 3, CV_AA, 0);
-                            cvLine(initImg, c2.mainLine(pos).start(), c2.mainLine(pos).end(), Position.colorQuadrants().get(pos), 3, CV_AA, 0);
-                            c1.mainLine(pos).addRelated(c2);
-                            c2.mainLine(pos).addRelated(c1);
-                        }
+                            Set<Line> l2 = c2.mainLines(pos);
+                            if (!l2.isEmpty())
+                            {
+                                Line f2 = l2.iterator().next();
+                                if (!c1.equals(c2) && !l1.isEmpty() && !l2.isEmpty()
+                                        && ((f1.intersection(f2) != null && f1.angleDiff(f2) < 15)
+                                        || (f1.intersection(f2) == null && f1.distancePerpendicular(f2.midPoint()) < 50)))
+                                {
+                                    f1.addRelated(c2);
+                                    f2.addRelated(c1);
+                                    l1.add(f2);
+                                    l2.add(f1);
+                                }
+                            }
+                        });
                     }
-                }
-            }
+                });
+            });
+            Position.quadrants().forEach(pos ->
+            {
+                squares.stream().filter(c -> (c.mainLines(pos).size() > 0)).forEach(c ->
+                {
+                    c.mainLines(pos);
+                    Line mean = Line.meanLine(c.mainLines(pos));
+                    mean.getRelated().addAll(c.mainLines(pos).iterator().next().getRelated());
+                    log.info("{} {} {}", pos, c, c.mainLines(pos));
+                    c.mainLines(pos).clear();
+                    c.mainLines(pos).add(mean);
+                    cvLine(initImg, mean.start(), mean.end(), Position.colorQuadrants().get(pos), 3, CV_AA, 0);
+                });
+            });
+            Utils.showImage(initImg, 640, 480, 20000);
             squares.forEach(s -> log.info("{}",
                     Position.quadrants().stream()
                     .collect(Collectors.toMap(
                                     q -> q,
-                                    q -> Arrays.asList(s.mainLine(q)).stream().filter(l -> l != null).map(l -> l.getRelated().size()).findFirst()))));
-            Utils.showImage(initImg, 640, 480);
+                                    q -> s.mainLines(q).stream().map(l -> l.getRelated().size()).findFirst()))));
             squares.forEach(Contour::release);
             cvReleaseImage(initImg);
             cvReleaseImage(binImg);

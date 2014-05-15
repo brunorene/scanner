@@ -16,7 +16,6 @@ import static com.googlecode.javacv.cpp.opencv_imgproc.*;
 import com.googlecode.javacv.cpp.opencv_imgproc.CvMoments;
 import com.vividsolutions.jts.geom.Coordinate;
 import java.util.*;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +24,7 @@ public class Contour
 {
 
     private static final Logger log = LoggerFactory.getLogger(Contour.class);
+    private static Long globalIndex = 0L;
     public static CvMemStorage STORAGE = CvMemStorage.create();
 
     public static void resetStorage()
@@ -32,9 +32,10 @@ public class Contour
         STORAGE = CvMemStorage.create();
     }
     private final CvSeq contour;
+    private final Long index;
     private final List<Point> corners = new ArrayList<>();
     private final IplImage image;
-    private final Map<Position, Line> mainLines = new HashMap<>();
+    private final Map<Position, Set<Line>> mainLines = new HashMap<>();
     private final CvBox2D minRect;
     private final CvMoments moments = new CvMoments();
     private final Integer lineCount;
@@ -42,6 +43,7 @@ public class Contour
 
     public Contour(CvSeq cont, IplImage img)
     {
+        this.index = globalIndex++;
         contour = cont;
         image = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1);
         cvSet(this.image, CvScalar.BLACK);
@@ -53,10 +55,11 @@ public class Contour
         IntStream.range(0, c.length / 2).forEach(i -> corners.add(new Point(c[i * 2], c[i * 2 + 1])));
         float quadrantLength = Math.max(minRect.size().height() / 2f, minRect.size().width() / 2f) * 1.05f;
         Map<Position, Line> guidelines = new HashMap<>();
+        Position.quadrants().stream().forEach(p -> mainLines.put(p, new LinkedHashSet<>()));
         Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(new Coordinate(getCentroid().x(), getCentroid().y()), angle() + (float) p.getPosition(), quadrantLength)));
         CvSeq found = cvHoughLines2(image, STORAGE, CV_HOUGH_PROBABILISTIC, 1, Math.PI / 180, 50, 50, 10);
         lineCount = found.total();
-        Position.quadrants().stream().forEach(p -> lines.put(p, new HashSet<>()));
+        Position.quadrants().stream().forEach(p -> lines.put(p, new LinkedHashSet<>()));
         IntStream.range(0, found.total())
                 .mapToObj(i -> new Line(
                                 new CvPoint(cvGetSeqElem(found, i)).position(0),
@@ -68,14 +71,50 @@ public class Contour
                         .filter(q -> guidelines.get(q).intersection(l) != null).forEach(q -> lines.get(q).add(l)));
     }
 
+    public Long getIndex()
+    {
+        return index;
+    }
+
     public Integer getLineCount()
     {
         return lineCount;
     }
 
+    @Override
+    public int hashCode()
+    {
+        int hash = 7;
+        hash = 37 * hash + Objects.hashCode(this.index);
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (obj == null)
+        {
+            return false;
+        }
+        if (getClass() != obj.getClass())
+        {
+            return false;
+        }
+        final Contour other = (Contour) obj;
+        return Objects.equals(this.index, other.index);
+    }
+
     public void joinLines()
     {
-        Position.quadrants().forEach(p -> mainLines.put(p, Line.meanLine(lines.get(p))));
+        Position.quadrants().forEach(p ->
+        {
+            Line mean = Line.meanLine(lines.get(p));
+            if (mean != null)
+            {
+                mainLines.get(p).add(mean);
+                mainLines.get(p).forEach(l -> l.addRelated(this));
+            }
+        });
     }
 
     public final float angle()
@@ -111,7 +150,7 @@ public class Contour
         return image;
     }
 
-    public Line mainLine(Position p)
+    public Set<Line> mainLines(Position p)
     {
         return mainLines.get(p);
     }
@@ -129,6 +168,6 @@ public class Contour
     @Override
     public String toString()
     {
-        return String.format("Contour %s", getCentroidCoordinate());
+        return String.format("Contour<%s>", index);
     }
 }

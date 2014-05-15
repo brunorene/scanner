@@ -17,6 +17,7 @@ public class Line extends LineSegment
 {
 
     private static final Logger log = LoggerFactory.getLogger(Line.class);
+    private static Long globalIndex = 0L;
 
     public static Line meanLine(Collection<Line> lines)
     {
@@ -37,6 +38,11 @@ public class Line extends LineSegment
     }
     private final Set<Contour> related = new HashSet<>();
 
+    public Long getIndex()
+    {
+        return index;
+    }
+
     public Line(CvPoint start, float angle, float length)
     {
         this(new Coordinate(start.x(), start.y()), angle, length);
@@ -53,10 +59,12 @@ public class Line extends LineSegment
     {
         this(new Coordinate(pt1.x(), pt1.y()), new Coordinate(pt2.x(), pt2.y()));
     }
+    private final Long index;
 
     public Line(Coordinate coord1, Coordinate coord2)
     {
         super();
+        index = globalIndex++;
         setCoordinates(coord1, coord2);
         normalize();
     }
@@ -75,6 +83,36 @@ public class Line extends LineSegment
     public CvPoint end()
     {
         return new CvPoint((int) Math.round(p1.x), (int) Math.round(p1.y));
+    }
+
+    public double angleDiff(Line l2)
+    {
+        return Math.abs(angle() - l2.angle());
+//        double currAngle2 = Math.abs(180 - Math.abs(angle() - l2.angle()));
+//        return Math.min(currAngle, currAngle2);
+    }
+
+    @Override
+    public int hashCode()
+    {
+        int hash = 7;
+        hash = 97 * hash + Objects.hashCode(this.index);
+        return hash;
+    }
+
+    @Override
+    public boolean equals(Object obj)
+    {
+        if (obj == null)
+        {
+            return false;
+        }
+        if (getClass() != obj.getClass())
+        {
+            return false;
+        }
+        final Line other = (Line) obj;
+        return Objects.equals(this.index, other.index);
     }
 
     public Line expandedLine(int width, int height)
@@ -131,6 +169,6 @@ public class Line extends LineSegment
     @Override
     public String toString()
     {
-        return String.format("Line(%s,%s - %s related)", getCoordinate(0), getCoordinate(1), getRelated().size());
+        return String.format("Line<%s>", index);
     }
 }

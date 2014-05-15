@@ -40,12 +40,12 @@ public class Utils
 		return false;
 	}
 
-	public static void showImage(opencv_core.IplImage img, int width, int height)
+	public static void showImage(opencv_core.IplImage img, int width, int height, int millsTimeout)
 	{
 		opencv_core.IplImage showImg = cvCreateImage(new CvSize(width, height), IPL_DEPTH_8U, img.nChannels());
 		cvResize(img, showImg);
 		cvShowImage("Image", showImg);
-		cvWaitKey(20000);
+		cvWaitKey(millsTimeout);
 		cvReleaseImage(showImg);
 	}
 
