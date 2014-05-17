@@ -16,6 +16,7 @@ import static com.googlecode.javacv.cpp.opencv_imgproc.*;
 import com.googlecode.javacv.cpp.opencv_imgproc.CvMoments;
 import com.vividsolutions.jts.geom.Coordinate;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +25,7 @@ public class Contour
 {
 
     private static final Logger log = LoggerFactory.getLogger(Contour.class);
-    private static Long globalIndex = 0L;
+    private static Integer globalIndex = 0;
     public static CvMemStorage STORAGE = CvMemStorage.create();
 
     public static void resetStorage()
@@ -32,7 +33,7 @@ public class Contour
         STORAGE = CvMemStorage.create();
     }
     private final CvSeq contour;
-    private final Long index;
+    private Integer index;
     private final List<Point> corners = new ArrayList<>();
     private final IplImage image;
     private final Map<Position, Set<Line>> mainLines = new HashMap<>();
@@ -71,7 +72,25 @@ public class Contour
                         .filter(q -> guidelines.get(q).intersection(l) != null).forEach(q -> lines.get(q).add(l)));
     }
 
-    public Long getIndex()
+    public void sortRelated(int contourIndex, int step, Position pos)
+    {
+        List<Contour> contours = mainLines(pos).iterator().next().getRelated()
+                .stream()
+                .sorted((c1, c2) -> (int) (c1.getCentroidCoordinate().distance(getCentroidCoordinate())
+                                           - c2.getCentroidCoordinate().distance(getCentroidCoordinate()))).collect(Collectors.toList());
+        for (Contour c : contours)
+        {
+            c.setIndex(contourIndex);
+            contourIndex += step;
+        }
+    }
+
+    public void setIndex(Integer index)
+    {
+        this.index = index;
+    }
+
+    public Integer getIndex()
     {
         return index;
     }

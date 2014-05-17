@@ -5,7 +5,7 @@
             <pattern>%5p [%t,%C{0},%F,%L] - %m%n</pattern>
         </encoder>
     </appender>
-    <root level="debug">
+    <root level="info">
         <appender-ref ref="ConsoleAppender" />
     </root>
 </configuration>

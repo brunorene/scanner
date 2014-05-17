@@ -87,32 +87,9 @@ public class Line extends LineSegment
 
     public double angleDiff(Line l2)
     {
-        return Math.abs(angle() - l2.angle());
-//        double currAngle2 = Math.abs(180 - Math.abs(angle() - l2.angle()));
-//        return Math.min(currAngle, currAngle2);
-    }
-
-    @Override
-    public int hashCode()
-    {
-        int hash = 7;
-        hash = 97 * hash + Objects.hashCode(this.index);
-        return hash;
-    }
-
-    @Override
-    public boolean equals(Object obj)
-    {
-        if (obj == null)
-        {
-            return false;
-        }
-        if (getClass() != obj.getClass())
-        {
-            return false;
-        }
-        final Line other = (Line) obj;
-        return Objects.equals(this.index, other.index);
+        double currAngle = Math.abs(angle() - l2.angle());
+        double currAngle2 = Math.abs(180 - Math.abs(angle() - l2.angle()));
+        return Math.min(currAngle, currAngle2);
     }
 
     public Line expandedLine(int width, int height)
@@ -122,21 +99,21 @@ public class Line extends LineSegment
         Coordinate top = lineIntersection(new LineSegment(0, 0, width, 0));
         Coordinate bottom = lineIntersection(new LineSegment(0, height, width, height));
         List<Coordinate> coords = new ArrayList<>();
-        if (left != null && Utils.between(0.0, left.x, (double) width) && Utils.between(0.0, left.y, (double) height))
+        if (left != null && Utils.between(0.0, (double) Math.round(left.x), (double) width) && Utils.between(0.0, (double) Math.round(left.y), (double) height))
         {
-            coords.add(left);
+            coords.add(new Coordinate(Math.round(left.x), Math.round(left.y)));
         }
-        if (right != null && Utils.between(0.0, right.x, (double) width) && Utils.between(0.0, right.y, (double) height))
+        if (right != null && Utils.between(0.0, (double) Math.round(right.x), (double) width) && Utils.between(0.0, (double) Math.round(right.y), (double) height))
         {
-            coords.add(right);
+            coords.add(new Coordinate(Math.round(right.x), Math.round(right.y)));
         }
-        if (top != null && Utils.between(0.0, top.x, (double) width) && Utils.between(0.0, top.y, (double) height))
+        if (top != null && Utils.between(0.0, (double) Math.round(top.x), (double) width) && Utils.between(0.0, (double) Math.round(top.y), (double) height))
         {
-            coords.add(top);
+            coords.add(new Coordinate(Math.round(top.x), Math.round(top.y)));
         }
-        if (bottom != null && Utils.between(0.0, bottom.x, (double) width) && Utils.between(0.0, bottom.y, (double) height))
+        if (bottom != null && Utils.between(0.0, (double) Math.round(bottom.x), (double) width) && Utils.between(0.0, (double) Math.round(bottom.y), (double) height))
         {
-            coords.add(bottom);
+            coords.add(new Coordinate(Math.round(bottom.x), Math.round(bottom.y)));
         }
         Line newLine = new Line(coords.get(0), coords.get(1));
         newLine.normalize();
@@ -169,6 +146,6 @@ public class Line extends LineSegment
     @Override
     public String toString()
     {
-        return String.format("Line<%s>", index);
+        return String.format("|%s,%s,%s,%s|", p0.x, p0.y, p1.x, p1.y);
     }
 }
