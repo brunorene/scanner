@@ -5,15 +5,6 @@
  */
 package pt.scanner.server;
 
-import com.googlecode.javacpp.Loader;
-import static com.googlecode.javacv.cpp.opencv_core.*;
-import com.googlecode.javacv.cpp.opencv_core.CvContour;
-import com.googlecode.javacv.cpp.opencv_core.CvScalar;
-import static com.googlecode.javacv.cpp.opencv_core.CvScalar.*;
-import com.googlecode.javacv.cpp.opencv_core.CvSeq;
-import com.googlecode.javacv.cpp.opencv_core.IplImage;
-import static com.googlecode.javacv.cpp.opencv_highgui.*;
-import static com.googlecode.javacv.cpp.opencv_imgproc.*;
 import com.vividsolutions.jts.geom.Coordinate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,6 +13,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.bytedeco.javacpp.Loader;
+import static org.bytedeco.javacpp.helper.opencv_core.AbstractCvScalar.BLACK;
+import static org.bytedeco.javacpp.helper.opencv_core.AbstractCvScalar.MAGENTA;
+import static org.bytedeco.javacpp.helper.opencv_imgproc.cvFindContours;
+import static org.bytedeco.javacpp.opencv_core.CV_AA;
+import static org.bytedeco.javacpp.opencv_core.CV_WHOLE_SEQ;
+import org.bytedeco.javacpp.opencv_core.CvContour;
+import org.bytedeco.javacpp.opencv_core.CvScalar;
+import org.bytedeco.javacpp.opencv_core.CvSeq;
+import static org.bytedeco.javacpp.opencv_core.IPL_DEPTH_8U;
+import org.bytedeco.javacpp.opencv_core.IplImage;
+import static org.bytedeco.javacpp.opencv_core.cvCreateImage;
+import static org.bytedeco.javacpp.opencv_core.cvGetSize;
+import static org.bytedeco.javacpp.opencv_core.cvInRangeS;
+import static org.bytedeco.javacpp.opencv_core.cvLine;
+import static org.bytedeco.javacpp.opencv_core.cvReleaseImage;
+import static org.bytedeco.javacpp.opencv_core.cvScalar;
+import static org.bytedeco.javacpp.opencv_highgui.CV_LOAD_IMAGE_COLOR;
+import static org.bytedeco.javacpp.opencv_highgui.cvLoadImage;
+import static org.bytedeco.javacpp.opencv_imgproc.CV_BGR2GRAY;
+import static org.bytedeco.javacpp.opencv_imgproc.CV_LINK_RUNS;
+import static org.bytedeco.javacpp.opencv_imgproc.CV_RETR_LIST;
+import static org.bytedeco.javacpp.opencv_imgproc.cvContourArea;
+import static org.bytedeco.javacpp.opencv_imgproc.cvCvtColor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pt.scanner.server.data.Contour;
@@ -38,7 +53,7 @@ import static pt.scanner.server.data.Utils.writeText;
 public class Scanner implements Runnable
 {
 
-	private static final CvScalar CUT_GRAY = new CvScalar(50, 0, 0, 0);
+	private static final CvScalar CUT_GRAY = cvScalar(50, 0, 0, 0);
 	private static final Logger log = LoggerFactory.getLogger(Scanner.class);
 
 	public static void main(String[] args)
@@ -64,7 +79,7 @@ public class Scanner implements Runnable
 			IplImage binImg = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1);
 			cvInRangeS(grayImg, BLACK, CUT_GRAY, binImg);
 			CvSeq contours = new CvSeq();
-			/* 
+			/*
 			 * Finding Contours
 			 */
 			cvFindContours(binImg, STORAGE, contours, Loader.sizeof(CvContour.class), CV_RETR_LIST, CV_LINK_RUNS);
@@ -101,10 +116,6 @@ public class Scanner implements Runnable
 							if (!l2.isEmpty())
 							{
 								Line f2 = l2.iterator().next();
-								if (f1.intersection(f2) != null)
-								{
-									log.debug("{} {} {} {} {}", f1.getIndex(), f2.getIndex(), f1.angleDiff(f2), f1.distancePerpendicular(f2.midPoint()), f1.intersection(f2));
-								}
 								if (!c1.equals(c2) && !l1.isEmpty() && !l2.isEmpty()
 									&& ((f1.intersection(f2) != null && f1.angleDiff(f2) < 15)
 										|| (f1.intersection(f2) == null && f1.distancePerpendicular(f2.midPoint()) < 15)))
@@ -185,13 +196,26 @@ public class Scanner implements Runnable
 					.stream().filter(c -> c.getIndex() == 28)
 					.findFirst().get().sortRelated(28, 1, Position.LEFT);
 			squares.forEach(c -> writeText(initImg, 2.0, c.getCentroid().x(), c.getCentroid().y(), MAGENTA, c.getIndex().toString()));
-			Utils.showImage(initImg, 640, 480, 40000);
-			log.debug(calibrationLines.toString().replaceAll("\\], ", "]\n"));
-			squares.forEach(s -> log.debug("{}",
-										   Position.quadrants().stream()
-										   .collect(Collectors.toMap(
-														   q -> q,
-														   q -> s.mainLines(q).stream().map(l -> l.getRelated().size()).findFirst()))));
+//			Utils.showImage(initImg, 640, 480, 40000);
+			/*
+			 * Debug printing
+			 */
+//			log.debug(calibrationLines.toString().replaceAll("\\], ", "]\n"));
+//			squares.forEach(s -> log.debug("{}",
+//										   Corner.corners().stream()
+//										   .collect(Collectors.toMap(cn -> cn, cn -> s.getCorner(cn)))));
+			
+			/*
+			 * calibration with laser on
+			 */
+			IplImage initLaser = cvLoadImage(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_COLOR);
+			IplImage grayLaser = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1);
+			cvCvtColor(initLaser, grayLaser, CV_BGR2GRAY);
+			IplImage binLaser = cvCreateImage(cvGetSize(initLaser), IPL_DEPTH_8U, 1);
+			cvInRangeS(grayLaser, BLACK, CUT_GRAY, binLaser);
+			Utils.showImage(binLaser, 640, 480, 40000);
+			
+			
 			/*
 			 * Releasing memory
 			 */

@@ -5,12 +5,21 @@
  */
 package pt.scanner.server.data;
 
-import com.googlecode.javacv.cpp.opencv_core;
-import static com.googlecode.javacv.cpp.opencv_core.*;
-import com.googlecode.javacv.cpp.opencv_core.CvSize;
-import static com.googlecode.javacv.cpp.opencv_highgui.cvShowImage;
-import static com.googlecode.javacv.cpp.opencv_highgui.cvWaitKey;
-import static com.googlecode.javacv.cpp.opencv_imgproc.cvResize;
+import org.bytedeco.javacpp.opencv_core;
+import static org.bytedeco.javacpp.opencv_core.CV_AA;
+import static org.bytedeco.javacpp.opencv_core.CV_FONT_HERSHEY_SIMPLEX;
+import org.bytedeco.javacpp.opencv_core.CvFont;
+import org.bytedeco.javacpp.opencv_core.CvScalar;
+import static org.bytedeco.javacpp.opencv_core.IPL_DEPTH_8U;
+import static org.bytedeco.javacpp.opencv_core.cvCreateImage;
+import static org.bytedeco.javacpp.opencv_core.cvInitFont;
+import static org.bytedeco.javacpp.opencv_core.cvPoint;
+import static org.bytedeco.javacpp.opencv_core.cvPutText;
+import static org.bytedeco.javacpp.opencv_core.cvReleaseImage;
+import static org.bytedeco.javacpp.opencv_core.cvSize;
+import static org.bytedeco.javacpp.opencv_highgui.cvShowImage;
+import static org.bytedeco.javacpp.opencv_highgui.cvWaitKey;
+import static org.bytedeco.javacpp.opencv_imgproc.cvResize;
 
 /**
  *
@@ -42,7 +51,7 @@ public class Utils
 
     public static void showImage(opencv_core.IplImage img, int width, int height, int millsTimeout)
     {
-        opencv_core.IplImage showImg = cvCreateImage(new CvSize(width, height), IPL_DEPTH_8U, img.nChannels());
+        opencv_core.IplImage showImg = cvCreateImage(cvSize(width, height), IPL_DEPTH_8U, img.nChannels());
         cvResize(img, showImg);
         cvShowImage("Image", showImg);
         cvWaitKey(millsTimeout);

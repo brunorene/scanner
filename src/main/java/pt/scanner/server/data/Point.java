@@ -5,14 +5,21 @@
  */
 package pt.scanner.server.data;
 
-import com.googlecode.javacv.cpp.opencv_core.CvPoint;
 import com.vividsolutions.jts.geom.Coordinate;
+import org.bytedeco.javacpp.opencv_core.CvPoint;
+import static org.bytedeco.javacpp.opencv_core.cvPoint;
 
 public class Point
 {
 
 	private float x;
 	private float y;
+
+	public Point(Coordinate c)
+	{
+		this.x = (float) c.x;
+		this.y = (float) c.y;
+	}
 
 	public Point(float x, float y)
 	{
@@ -27,7 +34,7 @@ public class Point
 
 	public CvPoint asCvPoint()
 	{
-		return new CvPoint(Math.round(x), Math.round(y));
+		return cvPoint(Math.round(x), Math.round(y));
 	}
 
 	@Override

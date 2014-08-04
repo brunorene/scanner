@@ -5,11 +5,11 @@
  */
 package pt.scanner.server.data;
 
-import com.googlecode.javacv.cpp.opencv_core.CvScalar;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.bytedeco.javacpp.opencv_core.CvScalar;
 
 /**
  *
@@ -21,11 +21,7 @@ public enum Position
 	TOP(270),
 	LEFT(180),
 	BOTTOM(90),
-	RIGHT(0),
-	TOP_LEFT(315),
-	TOP_RIGHT(225),
-	BOTTOM_LEFT(135),
-	BOTTOM_RIGHT(45);
+	RIGHT(0);
 	private final int position;
 
 	private Position(int position)
