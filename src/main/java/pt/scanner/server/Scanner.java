@@ -17,28 +17,17 @@ import org.bytedeco.javacpp.Loader;
 import static org.bytedeco.javacpp.helper.opencv_core.AbstractCvScalar.BLACK;
 import static org.bytedeco.javacpp.helper.opencv_core.AbstractCvScalar.MAGENTA;
 import static org.bytedeco.javacpp.helper.opencv_imgproc.cvFindContours;
-import static org.bytedeco.javacpp.opencv_core.CV_AA;
-import static org.bytedeco.javacpp.opencv_core.CV_WHOLE_SEQ;
+import static org.bytedeco.javacpp.opencv_core.*;
 import org.bytedeco.javacpp.opencv_core.CvContour;
 import org.bytedeco.javacpp.opencv_core.CvScalar;
 import org.bytedeco.javacpp.opencv_core.CvSeq;
-import static org.bytedeco.javacpp.opencv_core.IPL_DEPTH_8U;
-import org.bytedeco.javacpp.opencv_core.IplImage;
-import static org.bytedeco.javacpp.opencv_core.cvCreateImage;
-import static org.bytedeco.javacpp.opencv_core.cvGetSize;
-import static org.bytedeco.javacpp.opencv_core.cvInRangeS;
-import static org.bytedeco.javacpp.opencv_core.cvLine;
-import static org.bytedeco.javacpp.opencv_core.cvReleaseImage;
-import static org.bytedeco.javacpp.opencv_core.cvScalar;
+import org.bytedeco.javacpp.opencv_core.CvMat;
 import static org.bytedeco.javacpp.opencv_highgui.CV_LOAD_IMAGE_COLOR;
 import static org.bytedeco.javacpp.opencv_highgui.cvLoadImage;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_BGR2GRAY;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_LINK_RUNS;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_RETR_LIST;
-import static org.bytedeco.javacpp.opencv_imgproc.cvContourArea;
-import static org.bytedeco.javacpp.opencv_imgproc.cvCvtColor;
+import static org.bytedeco.javacpp.opencv_imgproc.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pt.scanner.server.addon.ZhangSuenThinning;
 import pt.scanner.server.data.Contour;
 import static pt.scanner.server.data.Contour.STORAGE;
 import pt.scanner.server.data.Line;
@@ -73,10 +62,10 @@ public class Scanner implements Runnable
 	{
 		try
 		{
-			IplImage initImg = cvLoadImage(String.format("%s/calibration/background.jpg", root), CV_LOAD_IMAGE_COLOR);
-			IplImage grayImg = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1);
+			CvMat initImg = cvLoadImage(String.format("%s/calibration/background.jpg", root), CV_LOAD_IMAGE_COLOR).asCvMat();
+			CvMat grayImg = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1).asCvMat();
 			cvCvtColor(initImg, grayImg, CV_BGR2GRAY);
-			IplImage binImg = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1);
+			CvMat binImg = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1).asCvMat();
 			cvInRangeS(grayImg, BLACK, CUT_GRAY, binImg);
 			CvSeq contours = new CvSeq();
 			/*
@@ -204,24 +193,28 @@ public class Scanner implements Runnable
 //			squares.forEach(s -> log.debug("{}",
 //										   Corner.corners().stream()
 //										   .collect(Collectors.toMap(cn -> cn, cn -> s.getCorner(cn)))));
-			
 			/*
 			 * calibration with laser on
 			 */
-			IplImage initLaser = cvLoadImage(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_COLOR);
-			IplImage grayLaser = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1);
+			CvMat initLaser = cvLoadImage(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_COLOR).asCvMat();
+			CvMat grayLaser = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1).asCvMat();
+			CvMat blurredLaser = cvCreateImage(cvGetSize(initImg), IPL_DEPTH_8U, 1).asCvMat();
 			cvCvtColor(initLaser, grayLaser, CV_BGR2GRAY);
-			IplImage binLaser = cvCreateImage(cvGetSize(initLaser), IPL_DEPTH_8U, 1);
+			CvMat binLaser = cvCreateImage(cvGetSize(initLaser), IPL_DEPTH_8U, 1).asCvMat();
+			CvMat negativeLaser = cvCreateImage(cvGetSize(initLaser), IPL_DEPTH_8U, 1).asCvMat();
+			CvMat dilatedLaser = cvCreateImage(cvGetSize(initLaser), IPL_DEPTH_8U, 1).asCvMat();
+			CvMat erodedLaser = cvCreateImage(cvGetSize(initLaser), IPL_DEPTH_8U, 1).asCvMat();
+//			medianBlur(grayLaser, blurredLaser, 7);
 			cvInRangeS(grayLaser, BLACK, CUT_GRAY, binLaser);
-			Utils.showImage(binLaser, 640, 480, 40000);
-			
-			
+			cvNot(binLaser, negativeLaser);
+			cvDilate(negativeLaser, dilatedLaser, null, 10);
+			cvErode(dilatedLaser, erodedLaser, null, 10);
+			Utils.showImage(erodedLaser, 640, 480, 40000);
+			Utils.showImage(ZhangSuenThinning.thinning(erodedLaser), 640, 480, 40000);
 			/*
 			 * Releasing memory
 			 */
 			squares.forEach(Contour::release);
-			cvReleaseImage(initImg);
-			cvReleaseImage(binImg);
 			STORAGE.release();
 		}
 		catch (RuntimeException e)

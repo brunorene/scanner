@@ -6,33 +6,18 @@
 package pt.scanner.server.data;
 
 import com.vividsolutions.jts.geom.Coordinate;
-import java.util.HashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import static org.bytedeco.javacpp.helper.opencv_core.cvDrawContours;
+import static org.bytedeco.javacpp.opencv_core.*;
 import org.bytedeco.javacpp.opencv_core.CvBox2D;
+import org.bytedeco.javacpp.opencv_core.CvMat;
 import org.bytedeco.javacpp.opencv_core.CvMemStorage;
 import org.bytedeco.javacpp.opencv_core.CvPoint;
 import org.bytedeco.javacpp.opencv_core.CvScalar;
 import org.bytedeco.javacpp.opencv_core.CvSeq;
-import static org.bytedeco.javacpp.opencv_core.IPL_DEPTH_8U;
-import org.bytedeco.javacpp.opencv_core.IplImage;
-import static org.bytedeco.javacpp.opencv_core.cvCreateImage;
-import static org.bytedeco.javacpp.opencv_core.cvGetSeqElem;
-import static org.bytedeco.javacpp.opencv_core.cvGetSize;
-import static org.bytedeco.javacpp.opencv_core.cvReleaseImage;
-import static org.bytedeco.javacpp.opencv_core.cvSet;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_HOUGH_PROBABILISTIC;
+import static org.bytedeco.javacpp.opencv_imgproc.*;
 import org.bytedeco.javacpp.opencv_imgproc.CvMoments;
-import static org.bytedeco.javacpp.opencv_imgproc.cvBoxPoints;
-import static org.bytedeco.javacpp.opencv_imgproc.cvHoughLines2;
-import static org.bytedeco.javacpp.opencv_imgproc.cvMinAreaRect2;
-import static org.bytedeco.javacpp.opencv_imgproc.cvMoments;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import static pt.scanner.server.data.Grid.WORLD_REFERENCE;
@@ -51,7 +36,7 @@ public class Contour
 	}
 	private final CvSeq contour;
 	private Map<Corner, Point> corners;
-	private final IplImage image;
+	private final CvMat image;
 	private Integer index;
 	private final Map<Position, Set<Line>> intersections = new HashMap<>();
 	private final Integer lineCount;
@@ -60,11 +45,11 @@ public class Contour
 	private final CvMoments moments = new CvMoments();
 	private Map<Corner, Point> realCorners;
 
-	public Contour(CvSeq cont, IplImage img)
+	public Contour(CvSeq cont, CvMat img)
 	{
 		this.index = globalIndex++;
 		contour = cont;
-		image = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1);
+		image = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1).asCvMat();
 		cvSet(this.image, CvScalar.BLACK);
 		cvDrawContours(this.image, contour, CvScalar.WHITE, CvScalar.WHITE, 0, 2, 8);
 		cvMoments(image, moments, 1);
@@ -142,7 +127,7 @@ public class Contour
 		return corners.get(p).asCoordinate();
 	}
 
-	public IplImage getImage()
+	public CvMat getImage()
 	{
 		return image;
 	}
@@ -197,7 +182,7 @@ public class Contour
 
 	public void release()
 	{
-		cvReleaseImage(image);
+		image.release();
 	}
 
 	public void sortRelated(int contourIndex, int step, Position pos)
