@@ -5,23 +5,20 @@
  */
 package pt.scanner.server.data;
 
-import com.vividsolutions.jts.algorithm.Angle;
-import com.vividsolutions.jts.geom.Coordinate;
-import com.vividsolutions.jts.geom.LineSegment;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import org.bytedeco.javacpp.opencv_core.CvPoint;
-import static org.bytedeco.javacpp.opencv_core.cvPoint;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import com.vividsolutions.jts.algorithm.*;
+import com.vividsolutions.jts.geom.*;
+import java.util.*;
+import java.util.concurrent.atomic.*;
+import org.apache.commons.math3.util.*;
+import org.bytedeco.javacpp.opencv_core.Size;
+import org.slf4j.*;
+import pt.scanner.server.util.*;
 
 public class Line extends LineSegment
 {
 
-	private static Integer globalIndex = 0;
+	private final static AtomicInteger globalIndex = new AtomicInteger();
 	private static final Logger log = LoggerFactory.getLogger(Line.class);
 
 	public static Line meanLine(Collection<Line> lines)
@@ -34,38 +31,35 @@ public class Line extends LineSegment
 		{
 			return lines.iterator().next();
 		}
-		Double startX = lines.stream().map(l -> l.p0.x).reduce(Double::sum).get();
-		Double startY = lines.stream().map(l -> l.p0.y).reduce(Double::sum).get();
-		Double endX = lines.stream().map(l -> l.p1.x).reduce(Double::sum).get();
-		Double endY = lines.stream().map(l -> l.p1.y).reduce(Double::sum).get();
-		Line mean = new Line(new Coordinate(startX / lines.size(), startY / lines.size()), new Coordinate(endX / lines.size(), endY / lines.size()));
+		double x0 = lines.stream().mapToDouble(l -> l.p0.x).sum();
+		double y0 = lines.stream().mapToDouble(l -> l.p0.y).sum();
+		double x1 = lines.stream().mapToDouble(l -> l.p1.x).sum();
+		double y1 = lines.stream().mapToDouble(l -> l.p1.y).sum();
+		Line mean = new Line(new Coordinate(x0 / lines.size(), y0 / lines.size()),
+							 new Coordinate(x1 / lines.size(), y1 / lines.size()));
 		return mean;
 	}
 	private final Integer index;
 	private final Set<Contour> related = new HashSet<>();
 
-	public Line(CvPoint start, float angle, float length)
+	public Line(Coordinate start, float angle, float length)
 	{
-		this(new Coordinate(start.x(), start.y()), angle, length);
+		this(start,
+			 new Coordinate(start.x + FastMath.cos(Angle.toRadians(angle)) * length,
+							start.y + FastMath.sin(Angle.toRadians(angle)) * length));
 	}
 
-	public Line(Coordinate coord, float angle, float length)
+	public Line(double x1, double y1, double x2, double y2)
 	{
-		this(new Coordinate((float) coord.x, (float) coord.y),
-			 new Coordinate(Math.round(coord.x + (float) Math.cos(Angle.toRadians(angle)) * length),
-					 Math.round(coord.y + (float) Math.sin(Angle.toRadians(angle)) * length)));
+		super(x1, y1, x2, y2);
+		index = globalIndex.getAndIncrement();
+		normalize();
 	}
 
-	public Line(CvPoint pt1, CvPoint pt2)
+	public Line(Coordinate p1, Coordinate p2)
 	{
-		this(new Coordinate(pt1.x(), pt1.y()), new Coordinate(pt2.x(), pt2.y()));
-	}
-
-	public Line(Coordinate coord1, Coordinate coord2)
-	{
-		super();
-		index = globalIndex++;
-		setCoordinates(coord1, coord2);
+		super(p1, p2);
+		index = globalIndex.getAndIncrement();
 		normalize();
 	}
 
@@ -82,41 +76,36 @@ public class Line extends LineSegment
 
 	public double angleDiff(Line l2)
 	{
-		double currAngle = Math.abs(angle() - l2.angle());
-		double currAngle2 = Math.abs(180 - Math.abs(angle() - l2.angle()));
-		return Math.min(currAngle, currAngle2);
+		double currAngle = FastMath.abs(angle() - l2.angle());
+		double currAngle2 = FastMath.abs(180 - FastMath.abs(angle() - l2.angle()));
+		return FastMath.min(currAngle, currAngle2);
 	}
 
-	public CvPoint end()
+	public Line expandedLine(Size size)
 	{
-		return cvPoint((int) Math.round(p1.x), (int) Math.round(p1.y));
-	}
-
-	public Line expandedLine(int width, int height)
-	{
-		Coordinate left = lineIntersection(new LineSegment(0, 0, 0, height));
-		Coordinate right = lineIntersection(new LineSegment(width, 0, width, height));
-		Coordinate top = lineIntersection(new LineSegment(0, 0, width, 0));
-		Coordinate bottom = lineIntersection(new LineSegment(0, height, width, height));
-		List<Coordinate> coords = new ArrayList<>();
-		if (left != null && Utils.between(0.0, (double) Math.round(left.x), (double) width) && Utils.between(0.0, (double) Math.round(left.y), (double) height))
+		Coordinate left = lineIntersection(new Line(0, 0, 0, size.height()));
+		Coordinate right = lineIntersection(new Line(size.width(), 0, size.width(), size.height()));
+		Coordinate top = lineIntersection(new Line(0, 0, size.width(), 0));
+		Coordinate bottom = lineIntersection(new Line(0, size.height(), size.width(), size.height()));
+		TreeSet<Coordinate> coords = new TreeSet<>();
+		if (left != null && Utils.between(0.0, (double) FastMath.round(left.x),
+										  (double) size.width()) && Utils.between(0.0, (double) FastMath.round(left.y), (double) size.height()))
 		{
-			coords.add(new Coordinate(Math.round(left.x), Math.round(left.y)));
+			coords.add(new Coordinate(FastMath.round(left.x), FastMath.round(left.y)));
 		}
-		if (right != null && Utils.between(0.0, (double) Math.round(right.x), (double) width) && Utils.between(0.0, (double) Math.round(right.y), (double) height))
+		if (right != null && Utils.between(0.0, (double) FastMath.round(right.x), (double) size.width()) && Utils.between(0.0, (double) FastMath.round(right.y), (double) size.height()))
 		{
-			coords.add(new Coordinate(Math.round(right.x), Math.round(right.y)));
+			coords.add(new Coordinate(FastMath.round(right.x), FastMath.round(right.y)));
 		}
-		if (top != null && Utils.between(0.0, (double) Math.round(top.x), (double) width) && Utils.between(0.0, (double) Math.round(top.y), (double) height))
+		if (top != null && Utils.between(0.0, (double) FastMath.round(top.x), (double) size.width()) && Utils.between(0.0, (double) FastMath.round(top.y), (double) size.height()))
 		{
-			coords.add(new Coordinate(Math.round(top.x), Math.round(top.y)));
+			coords.add(new Coordinate(FastMath.round(top.x), FastMath.round(top.y)));
 		}
-		if (bottom != null && Utils.between(0.0, (double) Math.round(bottom.x), (double) width) && Utils.between(0.0, (double) Math.round(bottom.y), (double) height))
+		if (bottom != null && Utils.between(0.0, (double) FastMath.round(bottom.x), (double) size.width()) && Utils.between(0.0, (double) FastMath.round(bottom.y), (double) size.height()))
 		{
-			coords.add(new Coordinate(Math.round(bottom.x), Math.round(bottom.y)));
+			coords.add(new Coordinate(FastMath.round(bottom.x), FastMath.round(bottom.y)));
 		}
-		Line newLine = new Line(coords.get(0), coords.get(1));
-		newLine.normalize();
+		Line newLine = new Line(coords.first(), coords.last());
 		return newLine;
 	}
 
@@ -143,14 +132,9 @@ public class Line extends LineSegment
 		return c;
 	}
 
-	public CvPoint start()
-	{
-		return cvPoint((int) Math.round(p0.x), (int) Math.round(p0.y));
-	}
-
 	@Override
 	public String toString()
 	{
-		return String.format("|%s,%s,%s,%s|", p0.x, p0.y, p1.x, p1.y);
+		return String.format("|%s,%s,%s,%s|%s|", p0.x, p0.y, p1.x, p1.y, getLength());
 	}
 }

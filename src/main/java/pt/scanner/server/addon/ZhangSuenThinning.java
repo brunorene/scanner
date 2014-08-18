@@ -1,11 +1,12 @@
 package pt.scanner.server.addon;
 
-import java.nio.ByteBuffer;
-import java.util.BitSet;
-import static org.bytedeco.javacpp.opencv_core.*;
+import static org.bytedeco.javacpp.opencv_core.CV_8UC1;
+
+import java.nio.*;
+import java.util.*;
 import org.bytedeco.javacpp.opencv_core.CvMat;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.bytedeco.javacpp.opencv_core.Mat;
+import org.slf4j.*;
 
 /**
  * This is a JavaCV implementation of the Zhang-Suen algorithm for thinning, using a Java BitSet.
@@ -47,7 +48,7 @@ public class ZhangSuenThinning
 	 * @param binaryInputImage Binary image with any range
 	 * @return thinned Image
 	 */
-	public static CvMat thinning(final CvMat binaryInputImage)
+	public static Mat thinning(final Mat binaryInputImage)
 	{
 		// The dimension (rows, cols)
 		int rows = binaryInputImage.rows();
@@ -67,7 +68,7 @@ public class ZhangSuenThinning
 				imageBits.set(index);
 			}
 		}
-		boolean pixelsWasDeleted = true;
+		boolean pixelsWasDeleted;
 		do
 		{
 			pixelsWasDeleted = thinningIteration(imageBits, false, rows, cols);
@@ -75,8 +76,7 @@ public class ZhangSuenThinning
 		}
 		while (pixelsWasDeleted);
 		// Make a copy the original image
-		CvMat result = cvCreateMat(rows, cols, CV_8UC1);
-		cvCopy(binaryInputImage, result);
+		CvMat result = new Mat(rows, cols, CV_8UC1, binaryInputImage.data()).asCvMat();
 		// ..and "set" every unset pixel in the copy that will be returned
 		for (int index = 0; index < size; index++)
 		{
@@ -85,7 +85,7 @@ public class ZhangSuenThinning
 				result.put(index, 0.0);
 			}
 		}
-		return result;
+		return new Mat(result);
 	}
 
 	/**

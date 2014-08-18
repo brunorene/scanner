@@ -5,11 +5,12 @@
  */
 package pt.scanner.server.data;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.bytedeco.javacpp.opencv_core.CvScalar;
+import static pt.scanner.server.util.Utils.BLUE;
+import static pt.scanner.server.util.Utils.CYAN;
+import static pt.scanner.server.util.Utils.GREEN;
+import static pt.scanner.server.util.Utils.RED;
+import java.util.*;
+import org.bytedeco.javacpp.opencv_core.Scalar;
 
 /**
  *
@@ -39,13 +40,19 @@ public enum Position
 		return Arrays.asList(RIGHT, BOTTOM, LEFT, TOP);
 	}
 
-	public static Map<Position, CvScalar> colorQuadrants()
+	// BGR
+	public Scalar color()
 	{
-		Map<Position, CvScalar> map = new HashMap<>();
-		map.put(TOP, CvScalar.BLUE);
-		map.put(BOTTOM, CvScalar.RED);
-		map.put(LEFT, CvScalar.GREEN);
-		map.put(RIGHT, CvScalar.MAGENTA);
-		return map;
+		switch (this)
+		{
+			case TOP:
+				return RED;
+			case BOTTOM:
+				return BLUE;
+			case LEFT:
+				return CYAN;
+			default:
+				return GREEN;
+		}
 	}
 }

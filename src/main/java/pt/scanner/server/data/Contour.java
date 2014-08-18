@@ -5,76 +5,93 @@
  */
 package pt.scanner.server.data;
 
-import com.vividsolutions.jts.geom.Coordinate;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import static org.bytedeco.javacpp.opencv_core.*;
-import org.bytedeco.javacpp.opencv_core.CvBox2D;
-import org.bytedeco.javacpp.opencv_core.CvMat;
-import org.bytedeco.javacpp.opencv_core.CvMemStorage;
-import org.bytedeco.javacpp.opencv_core.CvPoint;
-import org.bytedeco.javacpp.opencv_core.CvScalar;
-import org.bytedeco.javacpp.opencv_core.CvSeq;
-import static org.bytedeco.javacpp.opencv_imgproc.*;
-import org.bytedeco.javacpp.opencv_imgproc.CvMoments;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import static org.bytedeco.javacpp.opencv_core.CV_8UC1;
+import static org.bytedeco.javacpp.opencv_core.CV_8UC3;
+import static org.bytedeco.javacpp.opencv_core.CV_8UC4;
+import static org.bytedeco.javacpp.opencv_core.line;
+import static org.bytedeco.javacpp.opencv_imgproc.HoughLinesP;
+import static org.bytedeco.javacpp.opencv_imgproc.drawContours;
+import static org.bytedeco.javacpp.opencv_imgproc.minAreaRect;
+import static org.bytedeco.javacpp.opencv_imgproc.moments;
 import static pt.scanner.server.data.Grid.WORLD_REFERENCE;
+import static pt.scanner.server.util.Utils.BLACK;
+import static pt.scanner.server.util.Utils.point;
+
+import com.vividsolutions.jts.geom.*;
+import java.util.*;
+import java.util.concurrent.atomic.*;
+import java.util.stream.*;
+import org.apache.commons.math3.util.*;
+import org.bytedeco.javacpp.*;
+import org.bytedeco.javacpp.opencv_core.CvMat;
+import org.bytedeco.javacpp.opencv_core.Mat;
+import org.bytedeco.javacpp.opencv_core.MatVector;
+import org.bytedeco.javacpp.opencv_core.RNG;
+import org.bytedeco.javacpp.opencv_core.RotatedRect;
+import org.bytedeco.javacpp.opencv_core.Scalar;
+import org.bytedeco.javacpp.opencv_imgproc.Moments;
+import org.slf4j.*;
+import pt.scanner.server.util.*;
 
 public class Contour
 {
 
 	public static final Integer MAX_CONTOUR = 30;
-	public static CvMemStorage STORAGE = CvMemStorage.create();
-	private static Integer globalIndex = 0;
+	private final static AtomicInteger globalIndex = new AtomicInteger();
 	private static final Logger log = LoggerFactory.getLogger(Contour.class);
-
-	public static void resetStorage()
-	{
-		STORAGE = CvMemStorage.create();
-	}
-	private final CvSeq contour;
-	private Map<Corner, Point> corners;
-	private final CvMat image;
+	private final Mat contour;
+	private Map<Corner, Coordinate> corners;
+	private final Mat image;
 	private Integer index;
 	private final Map<Position, Set<Line>> intersections = new HashMap<>();
 	private final Integer lineCount;
 	private final Map<Position, Set<Line>> mainLines = new HashMap<>();
-	private final CvBox2D minRect;
-	private final CvMoments moments = new CvMoments();
-	private Map<Corner, Point> realCorners;
+	private final RotatedRect minRect;
+	private final Moments moments;
+	private Map<Corner, Coordinate> realCorners;
+	private final RNG rng = new RNG();
 
-	public Contour(CvSeq cont, CvMat img)
+	public Contour(Mat cont, Mat img)
 	{
-		this.index = globalIndex++;
+		this.index = globalIndex.getAndIncrement();
 		contour = cont;
-		image = cvCreateImage(cvGetSize(img), IPL_DEPTH_8U, 1).asCvMat();
-		cvSet(this.image, CvScalar.BLACK);
-		cvDrawContours(this.image, contour, CvScalar.WHITE, CvScalar.WHITE, 0, 2, 8);
-		cvMoments(image, moments, 1);
-		minRect = cvMinAreaRect2(contour, STORAGE);
-		float[] c = new float[8];
-		cvBoxPoints(minRect, c);
-		float quadrantLength = Math.max(minRect.size().height() / 2f, minRect.size().width() / 2f) * 1.05f;
+		image = img;
+		moments = moments(contour);
+		minRect = minAreaRect(contour);
+		float quadrantLength = FastMath.max(minRect.size().height() / 2f, minRect.size().width() / 2f) * 1.05f;
 		Map<Position, Line> guidelines = new HashMap<>();
 		Position.quadrants().stream().forEach(p -> mainLines.put(p, new LinkedHashSet<>()));
-		Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(new Coordinate(getCentroid().x(),
-																							 getCentroid().y()), angle()
-																												 + p.getPosition(),
-																			  quadrantLength)));
-		CvSeq found = cvHoughLines2(image, STORAGE, CV_HOUGH_PROBABILISTIC, 1, Math.PI / 180, 50, 50, 10);
-		lineCount = found.total();
+		Position.quadrants().stream().forEach(p -> guidelines.put(p, new Line(getCentroid(), angle() + p.getPosition(), quadrantLength)));
+		Mat lines = new Mat(image.size(), CV_8UC4, BLACK);
+		// create auxiliary image with contour
+		Mat bg = new Mat(image.size(), CV_8UC1, BLACK);
+		opencv_core.MatVector v = new opencv_core.MatVector(1);
+		v.put(0, contour);
+		drawContours(bg, v, 0, new opencv_core.Scalar(255, 255, 255, 255));
+		HoughLinesP(bg, lines, 1, FastMath.PI / 180, 30, 2, 20);
+		CvMat source = lines.asCvMat();
 		Position.quadrants().stream().forEach(p -> intersections.put(p, new LinkedHashSet<>()));
-		IntStream.range(0, found.total())
-				.mapToObj(i -> new Line(
-								new CvPoint(cvGetSeqElem(found, i)).position(0),
-								new CvPoint(cvGetSeqElem(found, i)).position(1)))
-				.filter(l -> Double.compare(l.angle(), 0.0) != 0)
-				.map(l -> l.expandedLine(img.width(), img.height()))
+		lineCount = source.cols();
+		IntStream.range(0, source.cols())
+				.mapToObj(i -> new Line(source.get(0, i, 0), source.get(0, i, 1), source.get(0, i, 2), source.get(0, i, 3)))
+				.map(l -> l.expandedLine(image.size()))
 				.forEach(l -> Position.quadrants()
 						.stream()
 						.filter(q -> guidelines.get(q).intersection(l) != null).forEach(q -> intersections.get(q).add(l)));
+		if (log.isDebugEnabled())
+		{
+			Mat debugImg = new Mat(image.size(), CV_8UC3, BLACK);
+			Position.quadrants().stream().forEach(q ->
+			{
+				intersections.get(q).stream().forEach(l -> line(debugImg, point(l.p0), point(l.p1), q.color()));
+				line(debugImg, point(guidelines.get(q).p0), point(guidelines.get(q).p1), q.color());
+			});
+			MatVector vec = new MatVector(1);
+			vec.put(0, contour);
+			drawContours(debugImg, vec, 0, new Scalar(255, 255, 255, 255));
+			Utils.showImage(debugImg, 0.5f, 2000);
+		}
+		log.debug("Contour {} constructed - {} lines", index, lines.cols());
 	}
 
 	public final float angle()
@@ -94,40 +111,26 @@ public class Contour
 			return false;
 		}
 		final Contour other = (Contour) obj;
-		return Objects.equals(this.index, other.index);
+		return Objects.equals(this.index, other.getIndex());
 	}
 
-	public final CvPoint getCentroid()
-	{
-		CvPoint p = new CvPoint();
-		p.x((int) Math.round(moments.m10() / moments.m00()));
-		p.y((int) Math.round(moments.m01() / moments.m00()));
-		return p;
-	}
-
-	public final Coordinate getCentroidCoordinate()
+	public final Coordinate getCentroid()
 	{
 		return new Coordinate(moments.m10() / moments.m00(), moments.m01() / moments.m00());
 	}
 
-	public CvSeq getContour()
+	public Mat getContour()
 	{
 		return contour;
 	}
 
-	public CvPoint getCorner(Corner p)
+	public Coordinate getCorner(Corner p)
 	{
 		generateCorners();
-		return corners.get(p).asCvPoint();
+		return corners.get(p);
 	}
 
-	public Coordinate getCornerCoordinate(Corner p)
-	{
-		generateCorners();
-		return corners.get(p).asCoordinate();
-	}
-
-	public CvMat getImage()
+	public Mat getImage()
 	{
 		return image;
 	}
@@ -147,7 +150,7 @@ public class Contour
 		return lineCount;
 	}
 
-	public Map<Corner, Point> getRealCorner(Corner c)
+	public Map<Corner, Coordinate> getRealCorner(Corner c)
 	{
 		generateCorners();
 		return realCorners;
@@ -180,17 +183,12 @@ public class Contour
 		return mainLines.get(p);
 	}
 
-	public void release()
-	{
-		image.release();
-	}
-
 	public void sortRelated(int contourIndex, int step, Position pos)
 	{
 		List<Contour> contours = mainLines(pos).iterator().next().getRelated()
 				.stream()
-				.sorted((c1, c2) -> (int) (c1.getCentroidCoordinate().distance(getCentroidCoordinate())
-										   - c2.getCentroidCoordinate().distance(getCentroidCoordinate()))).collect(Collectors.toList());
+				.sorted((c1, c2) -> (int) (c1.getCentroid().distance(getCentroid()) - c2.getCentroid().distance(getCentroid())))
+				.collect(Collectors.toList());
 		for (Contour c : contours)
 		{
 			c.setIndex(contourIndex);
@@ -212,12 +210,12 @@ public class Contour
 					.filter(c -> !mainLines(c.getHorizontal()).isEmpty())
 					.filter(c -> !mainLines(c.getVertical()).isEmpty())
 					.collect(Collectors.toMap(c -> c,
-											  c -> new Point(mainLines(c.getHorizontal()).iterator().next()
+											  c -> new Coordinate(mainLines(c.getHorizontal()).iterator().next()
 													  .intersection(mainLines(c.getVertical()).iterator().next()))));
 			realCorners = Corner.corners().stream()
 					.filter(c -> !mainLines(c.getHorizontal()).isEmpty())
 					.filter(c -> !mainLines(c.getVertical()).isEmpty())
-					.collect(Collectors.toMap(c -> c, c -> new Point(WORLD_REFERENCE.get(index).get(c))));
+					.collect(Collectors.toMap(c -> c, c -> new Coordinate(WORLD_REFERENCE.get(index).get(c))));
 		}
 	}
 }
