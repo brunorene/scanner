@@ -5,30 +5,6 @@
  */
 package pt.scanner.server.main;
 
-import static org.bytedeco.javacpp.opencv_core.CV_8UC1;
-import static org.bytedeco.javacpp.opencv_core.bitwise_not;
-import static org.bytedeco.javacpp.opencv_core.inRange;
-import static org.bytedeco.javacpp.opencv_core.line;
-import static org.bytedeco.javacpp.opencv_core.subtract;
-import static org.bytedeco.javacpp.opencv_highgui.CV_LOAD_IMAGE_GRAYSCALE;
-import static org.bytedeco.javacpp.opencv_highgui.imread;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_CHAIN_APPROX_SIMPLE;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_RETR_LIST;
-import static org.bytedeco.javacpp.opencv_imgproc.CV_THRESH_BINARY;
-import static org.bytedeco.javacpp.opencv_imgproc.MORPH_RECT;
-import static org.bytedeco.javacpp.opencv_imgproc.blur;
-import static org.bytedeco.javacpp.opencv_imgproc.contourArea;
-import static org.bytedeco.javacpp.opencv_imgproc.dilate;
-import static org.bytedeco.javacpp.opencv_imgproc.drawContours;
-import static org.bytedeco.javacpp.opencv_imgproc.erode;
-import static org.bytedeco.javacpp.opencv_imgproc.findContours;
-import static org.bytedeco.javacpp.opencv_imgproc.getStructuringElement;
-import static org.bytedeco.javacpp.opencv_imgproc.threshold;
-import static pt.scanner.server.util.Utils.BLACK;
-import static pt.scanner.server.util.Utils.GRAY;
-import static pt.scanner.server.util.Utils.point;
-import static pt.scanner.server.util.Utils.writeText;
-
 import com.vividsolutions.jts.geom.*;
 import java.nio.*;
 import java.util.*;
@@ -39,11 +15,16 @@ import org.bytedeco.javacpp.opencv_core.Mat;
 import org.bytedeco.javacpp.opencv_core.MatVector;
 import org.bytedeco.javacpp.opencv_core.Scalar;
 import org.bytedeco.javacpp.opencv_core.Size;
+import static org.bytedeco.javacpp.opencv_core.*;
+import static org.bytedeco.javacpp.opencv_highgui.CV_LOAD_IMAGE_GRAYSCALE;
+import static org.bytedeco.javacpp.opencv_highgui.imread;
+import static org.bytedeco.javacpp.opencv_imgproc.*;
 import org.slf4j.*;
 import pt.scanner.server.addon.*;
 import pt.scanner.server.data.*;
 import pt.scanner.server.main.Scanner;
 import pt.scanner.server.util.*;
+import static pt.scanner.server.util.Utils.*;
 
 /**
  *
@@ -72,8 +53,10 @@ public class Scanner implements Runnable
 		try
 		{
 			final Mat grayImg = imread(String.format("%s/calibration/background.jpg", root), CV_LOAD_IMAGE_GRAYSCALE);
+			Utils.showImage(grayImg, 0.5f, 1000);
 			Mat binImg = new Mat(grayImg.size(), CV_8UC1, BLACK);
 			threshold(grayImg, binImg, 100, 255, CV_THRESH_BINARY);
+			Utils.showImage(binImg, 0.5f, 1000);
 			ByteBuffer buffer = binImg.getByteBuffer();
 			IntStream.range(0, binImg.rows()).forEach(r ->
 			{
@@ -89,35 +72,28 @@ public class Scanner implements Runnable
 			});
 			// it is reusing the buffer - do not release
 			Mat binImg2 = new Mat(binImg.rows(), binImg.cols(), CV_8UC1, new BytePointer(buffer));
-			if (log.isDebugEnabled())
-			{
-				Utils.showImage(binImg2, 0.5f, 1000);
-			}
+			Utils.showImage(binImg2, 0.5f, 1000);
 			/*
 			 * Finding Contours
 			 */
 			MatVector contours = new MatVector();
 			findContours(binImg2, contours, CV_RETR_LIST, CV_CHAIN_APPROX_SIMPLE);
 			log.info("{}", contours.size());
-			List<Contour> squares = LongStream.range(0, contours.size()).parallel()
-					.filter(i -> Double.compare(contourArea(contours.get(i)), 20000.0) > 0)
+			List<Contour> squares = LongStream.range(0, contours.size()).filter(i -> Double.compare(contourArea(contours.get(i)), 20000.0) > 0)
 					.mapToObj(i -> contours.get(i))
 					.sorted((c1, c2) -> Double.compare(contourArea(c1), contourArea(c2)))
 					.limit(30)
 					.map(c -> new Contour(c, binImg2))
 					.collect(Collectors.toList());
-			if (log.isDebugEnabled())
+			Mat bg = new Mat(binImg2.size(), CV_8UC1, BLACK);
+			squares.forEach(c ->
 			{
-				Mat bg = new Mat(binImg2.size(), CV_8UC1, BLACK);
-				squares.forEach(c ->
-				{
-					log.info("contour area {}", contourArea(c.getContour()));
-					MatVector v = new MatVector(1);
-					v.put(0, c.getContour());
-					drawContours(bg, v, 0, new Scalar(255, 255, 255, 255));
-					Utils.showImage(bg, 0.5f, 1000);
-				});
-			}
+				log.info("contour area {}", contourArea(c.getContour()));
+				MatVector v = new MatVector(1);
+				v.put(0, c.getContour());
+				drawContours(bg, v, 0, new Scalar(255, 255, 255, 255));
+				Utils.showImage(bg, 0.5f, 100);
+			});
 			/*
 			 * Relating contours using nearness & position between lines
 			 */
@@ -222,42 +198,45 @@ public class Scanner implements Runnable
 			/*
 			 * Debug printing
 			 */
-			if (log.isDebugEnabled())
-			{
-				log.debug(calibrationLines.toString().replaceAll("\\], ", "]\n"));
-				squares.forEach(s -> log.debug("{}",
-											   Corner.corners().stream()
-											   .filter(cn -> s.getCorner(cn) != null)
-											   .collect(Collectors.toMap(cn -> cn, cn -> s.getCorner(cn)))));
-			}
+			log.debug(calibrationLines.toString().replaceAll("\\], ", "]\n"));
+			squares.forEach(s -> log.debug("{}",
+										   Corner.corners().stream()
+										   .filter(cn -> s.getCorner(cn) != null)
+										   .collect(Collectors.toMap(cn -> cn, cn -> s.getCorner(cn)))));
 			/*
 			 * calibration with laser on
 			 */
+			log.info("laser 1");
 			Mat grayLaser = imread(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_GRAYSCALE);
+			Utils.showImage(grayLaser, 0.5f, 1000);
+			log.info("laser 2");
 			Mat binLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
 			Mat negativeLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
-			Mat blurredLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
-			Mat moreBlurredLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
-			blur(grayLaser, blurredLaser, grayLaser.size());
-			for (int i = 0; i < 100; i++)
-			{
-				blur(blurredLaser, moreBlurredLaser, grayLaser.size());
-				blur(moreBlurredLaser, blurredLaser, grayLaser.size());
-			}
-			Utils.showImage(grayLaser, 0.5f, 3000);
-			Utils.showImage(moreBlurredLaser, 0.5f, 3000);
-			threshold(moreBlurredLaser, binLaser, 100, 255, CV_THRESH_BINARY);
+			Mat blurredLaser = new Mat(grayLaser.size(), CV_8UC3, BLACK);
+			medianBlur(grayLaser, blurredLaser, 15);
+			Utils.showImage(blurredLaser, 0.5f, 1000);
+			Utils.showImage(grayLaser, 0.5f, 1000);
+			log.info("laser 3");
+			threshold(blurredLaser, binLaser, 100, 255, CV_THRESH_BINARY);
 			Utils.showImage(binLaser, 0.5f, 3000);
+			log.info("laser 4");
 			bitwise_not(binLaser, negativeLaser);
 			Utils.showImage(negativeLaser, 0.5f, 3000);
+			log.info("laser 5");
 			Mat openedLaser = new Mat(negativeLaser.size(), CV_8UC1, negativeLaser.data());
 			Mat img1 = new Mat(openedLaser.size(), CV_8UC1, BLACK);
+			log.info("laser 6");
 			Mat kernel = getStructuringElement(MORPH_RECT, new Size(3, 3), new opencv_core.Point(1, 1));
 			erode(openedLaser, img1, kernel);
+			log.info("laser 7");
 			dilate(img1, openedLaser, kernel);
+			Utils.showImage(openedLaser, 0.5f, 5000);
 			Mat result = new Mat(openedLaser.size(), CV_8UC1, BLACK);
+			log.info("laser 8");
 			Mat thinned = ZhangSuenThinning.thinning(openedLaser);
+			log.info("laser 9");
 			subtract(openedLaser, thinned, result);
+			log.info("laser 10");
 			Utils.showImage(result, 0.5f, 10000);
 		}
 		catch (RuntimeException e)

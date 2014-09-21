@@ -5,18 +5,6 @@
  */
 package pt.scanner.server.data;
 
-import static org.bytedeco.javacpp.opencv_core.CV_8UC1;
-import static org.bytedeco.javacpp.opencv_core.CV_8UC3;
-import static org.bytedeco.javacpp.opencv_core.CV_8UC4;
-import static org.bytedeco.javacpp.opencv_core.line;
-import static org.bytedeco.javacpp.opencv_imgproc.HoughLinesP;
-import static org.bytedeco.javacpp.opencv_imgproc.drawContours;
-import static org.bytedeco.javacpp.opencv_imgproc.minAreaRect;
-import static org.bytedeco.javacpp.opencv_imgproc.moments;
-import static pt.scanner.server.data.Grid.WORLD_REFERENCE;
-import static pt.scanner.server.util.Utils.BLACK;
-import static pt.scanner.server.util.Utils.point;
-
 import com.vividsolutions.jts.geom.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
@@ -29,9 +17,14 @@ import org.bytedeco.javacpp.opencv_core.MatVector;
 import org.bytedeco.javacpp.opencv_core.RNG;
 import org.bytedeco.javacpp.opencv_core.RotatedRect;
 import org.bytedeco.javacpp.opencv_core.Scalar;
+import static org.bytedeco.javacpp.opencv_core.*;
+import static org.bytedeco.javacpp.opencv_imgproc.*;
 import org.bytedeco.javacpp.opencv_imgproc.Moments;
 import org.slf4j.*;
+import static pt.scanner.server.data.Grid.WORLD_REFERENCE;
 import pt.scanner.server.util.*;
+import static pt.scanner.server.util.Utils.BLACK;
+import static pt.scanner.server.util.Utils.point;
 
 public class Contour
 {
@@ -81,6 +74,7 @@ public class Contour
 		if (log.isDebugEnabled())
 		{
 			Mat debugImg = new Mat(image.size(), CV_8UC3, BLACK);
+			cvtColor(image, debugImg, CV_GRAY2BGR);
 			Position.quadrants().stream().forEach(q ->
 			{
 				intersections.get(q).stream().forEach(l -> line(debugImg, point(l.p0), point(l.p1), q.color()));
@@ -89,7 +83,7 @@ public class Contour
 			MatVector vec = new MatVector(1);
 			vec.put(0, contour);
 			drawContours(debugImg, vec, 0, new Scalar(255, 255, 255, 255));
-			Utils.showImage(debugImg, 0.5f, 2000);
+			Utils.showImage(debugImg, 0.5f, 100);
 		}
 		log.debug("Contour {} constructed - {} lines", index, lines.cols());
 	}
@@ -207,8 +201,8 @@ public class Contour
 		if (corners == null)
 		{
 			corners = Corner.corners().stream()
-					.filter(c -> !mainLines(c.getHorizontal()).isEmpty())
-					.filter(c -> !mainLines(c.getVertical()).isEmpty())
+					.filter(c -> !mainLines(c.getHorizontal()).isEmpty() && !mainLines(c.getVertical()).isEmpty()
+								 && mainLines(c.getHorizontal()).iterator().next().intersection(mainLines(c.getVertical()).iterator().next()) != null)
 					.collect(Collectors.toMap(c -> c,
 											  c -> new Coordinate(mainLines(c.getHorizontal()).iterator().next()
 													  .intersection(mainLines(c.getVertical()).iterator().next()))));
