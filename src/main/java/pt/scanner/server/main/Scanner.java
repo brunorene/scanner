@@ -53,10 +53,10 @@ public class Scanner implements Runnable
 		try
 		{
 			final Mat grayImg = imread(String.format("%s/calibration/background.jpg", root), CV_LOAD_IMAGE_GRAYSCALE);
-			Utils.showImage(grayImg, 0.5f, 1000);
+			Utils.showImage(grayImg, 1000);
 			Mat binImg = new Mat(grayImg.size(), CV_8UC1, BLACK);
 			threshold(grayImg, binImg, 100, 255, CV_THRESH_BINARY);
-			Utils.showImage(binImg, 0.5f, 1000);
+			Utils.showImage(binImg, 1000);
 			ByteBuffer buffer = binImg.getByteBuffer();
 			IntStream.range(0, binImg.rows()).forEach(r ->
 			{
@@ -72,7 +72,7 @@ public class Scanner implements Runnable
 			});
 			// it is reusing the buffer - do not release
 			Mat binImg2 = new Mat(binImg.rows(), binImg.cols(), CV_8UC1, new BytePointer(buffer));
-			Utils.showImage(binImg2, 0.5f, 1000);
+			Utils.showImage(binImg2, 1000);
 			/*
 			 * Finding Contours
 			 */
@@ -92,7 +92,7 @@ public class Scanner implements Runnable
 				MatVector v = new MatVector(1);
 				v.put(0, c.getContour());
 				drawContours(bg, v, 0, new Scalar(255, 255, 255, 255));
-				Utils.showImage(bg, 0.5f, 100);
+				Utils.showImage(bg, 100);
 			});
 			/*
 			 * Relating contours using nearness & position between lines
@@ -208,20 +208,20 @@ public class Scanner implements Runnable
 			 */
 			log.info("laser 1");
 			Mat grayLaser = imread(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_GRAYSCALE);
-			Utils.showImage(grayLaser, 0.5f, 1000);
+			Utils.showImage(grayLaser, 1000);
 			log.info("laser 2");
 			Mat binLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
 			Mat negativeLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
 			Mat blurredLaser = new Mat(grayLaser.size(), CV_8UC3, BLACK);
 			medianBlur(grayLaser, blurredLaser, 15);
-			Utils.showImage(blurredLaser, 0.5f, 1000);
-			Utils.showImage(grayLaser, 0.5f, 1000);
+			Utils.showImage(blurredLaser, 1000);
+			Utils.showImage(grayLaser, 1000);
 			log.info("laser 3");
 			threshold(blurredLaser, binLaser, 100, 255, CV_THRESH_BINARY);
-			Utils.showImage(binLaser, 0.5f, 3000);
+			Utils.showImage(binLaser, 3000);
 			log.info("laser 4");
 			bitwise_not(binLaser, negativeLaser);
-			Utils.showImage(negativeLaser, 0.5f, 3000);
+			Utils.showImage(negativeLaser, 3000);
 			log.info("laser 5");
 			Mat openedLaser = new Mat(negativeLaser.size(), CV_8UC1, negativeLaser.data());
 			Mat img1 = new Mat(openedLaser.size(), CV_8UC1, BLACK);
@@ -230,14 +230,14 @@ public class Scanner implements Runnable
 			erode(openedLaser, img1, kernel);
 			log.info("laser 7");
 			dilate(img1, openedLaser, kernel);
-			Utils.showImage(openedLaser, 0.5f, 5000);
+			Utils.showImage(openedLaser, 5000);
 			Mat result = new Mat(openedLaser.size(), CV_8UC1, BLACK);
 			log.info("laser 8");
 			Mat thinned = ZhangSuenThinning.thinning(openedLaser);
 			log.info("laser 9");
 			subtract(openedLaser, thinned, result);
 			log.info("laser 10");
-			Utils.showImage(result, 0.5f, 10000);
+			Utils.showImage(result, 10000);
 		}
 		catch (RuntimeException e)
 		{

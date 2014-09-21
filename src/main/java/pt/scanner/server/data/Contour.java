@@ -83,7 +83,7 @@ public class Contour
 			MatVector vec = new MatVector(1);
 			vec.put(0, contour);
 			drawContours(debugImg, vec, 0, new Scalar(255, 255, 255, 255));
-			Utils.showImage(debugImg, 0.5f, 100);
+			Utils.showImage(debugImg, 100);
 		}
 		log.debug("Contour {} constructed - {} lines", index, lines.cols());
 	}
