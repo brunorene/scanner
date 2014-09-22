@@ -5,6 +5,7 @@
  */
 package pt.scanner.server.main;
 
+import com.google.common.base.Strings;
 import com.vividsolutions.jts.geom.*;
 import java.nio.*;
 import java.util.*;
@@ -38,7 +39,10 @@ public class Scanner implements Runnable
 	public static void main(String[] args)
 	{
 		Scanner scanner = new Scanner("../..");
-		scanner.run();
+		while (true)
+		{
+			scanner.run();
+		}
 	}
 	private final String root;
 
@@ -92,7 +96,7 @@ public class Scanner implements Runnable
 				MatVector v = new MatVector(1);
 				v.put(0, c.getContour());
 				drawContours(bg, v, 0, new Scalar(255, 255, 255, 255));
-				Utils.showImage(bg, 100);
+				Utils.showImage(bg, 1000);
 			});
 			/*
 			 * Relating contours using nearness & position between lines
@@ -206,40 +210,37 @@ public class Scanner implements Runnable
 			/*
 			 * calibration with laser on
 			 */
-			log.info("laser 1");
-			Mat grayLaser = imread(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_GRAYSCALE);
-			Utils.showImage(grayLaser, 1000);
-			log.info("laser 2");
-			Mat binLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
-			Mat negativeLaser = new Mat(grayLaser.size(), CV_8UC1, BLACK);
-			Mat blurredLaser = new Mat(grayLaser.size(), CV_8UC3, BLACK);
-			medianBlur(grayLaser, blurredLaser, 15);
-			Utils.showImage(blurredLaser, 1000);
-			Utils.showImage(grayLaser, 1000);
-			log.info("laser 3");
-			threshold(blurredLaser, binLaser, 100, 255, CV_THRESH_BINARY);
-			Utils.showImage(binLaser, 3000);
-			log.info("laser 4");
-			bitwise_not(binLaser, negativeLaser);
-			Utils.showImage(negativeLaser, 3000);
-			log.info("laser 5");
-			Mat openedLaser = new Mat(negativeLaser.size(), CV_8UC1, negativeLaser.data());
-			Mat img1 = new Mat(openedLaser.size(), CV_8UC1, BLACK);
-			log.info("laser 6");
-			Mat kernel = getStructuringElement(MORPH_RECT, new Size(3, 3), new opencv_core.Point(1, 1));
-			erode(openedLaser, img1, kernel);
-			log.info("laser 7");
-			dilate(img1, openedLaser, kernel);
-			Utils.showImage(openedLaser, 5000);
-			Mat result = new Mat(openedLaser.size(), CV_8UC1, BLACK);
-			log.info("laser 8");
-			Mat thinned = ZhangSuenThinning.thinning(openedLaser);
-			log.info("laser 9");
-			subtract(openedLaser, thinned, result);
-			log.info("laser 10");
-			Utils.showImage(result, 10000);
+			IntStream.range(-1, 128)
+					.mapToObj(i -> Integer.toString(i))
+					.map(i -> i.equals("-1")
+							  ? imread(String.format("%s/calibration/laser.jpg", root), CV_LOAD_IMAGE_GRAYSCALE)
+							  : imread(String.format("%s/imagens/capt%s.jpg", root, Strings.padStart(i, 3, '0')), CV_LOAD_IMAGE_GRAYSCALE)
+					).forEach(img ->
+							{
+								Utils.showImage(img, 1000);
+								log.info("dilating");
+								Mat dilatedLaser = new Mat(img.size(), CV_8UC1, BLACK);
+								Mat kernel = getStructuringElement(MORPH_RECT, new Size(3, 3), new opencv_core.Point(1, 1));
+								dilate(img, dilatedLaser, kernel);
+								Utils.showImage(dilatedLaser, 1000);
+								log.info("blurring");
+								Mat blurredLaser = new Mat(img.size(), CV_8UC3, BLACK);
+								Mat blurredLaser2 = new Mat(img.size(), CV_8UC3, BLACK);
+								medianBlur(img, blurredLaser, 15);
+								Utils.showImage(blurredLaser, 1000);
+								blur(blurredLaser, blurredLaser2, new Size(15, 15));
+								Utils.showImage(blurredLaser2, 1000);
+								log.info("binary Image");
+								Mat binLaser = new Mat(img.size(), CV_8UC1, BLACK);
+								threshold(blurredLaser, binLaser, 50, 255, CV_THRESH_BINARY);
+								Utils.showImage(binLaser, 1000);
+								log.info("Thinning");
+								Mat thinned = ZhangSuenThinning.thinning(binLaser);
+								Utils.showImage(thinned, 1000);
+					});
+			Thread.sleep(20000);
 		}
-		catch (RuntimeException e)
+		catch (RuntimeException | InterruptedException e)
 		{
 			log.error(e.getMessage(), e);
 		}
